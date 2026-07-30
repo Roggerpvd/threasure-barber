@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 48;
+}
+
+/* Custom clip-paths from stitch designs */
+.v-cut-left {
+    clip-path: polygon(15% 0, 100% 0, 100% 100%, 0% 100%);
+}
+
+.v-cut-right {
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 15% 100%);
+}
+
+.v-cut-gallery {
+    clip-path: polygon(0 0, 100% 15%, 100% 100%, 0 85%);
+}
+
+.diagonal-bg {
+    clip-path: polygon(0 0, 100% 5%, 100% 100%, 0 95%);
+}
+
+.diagonal-cut {
+    clip-path: polygon(0 0, 100% 0, 100% 90%, 0% 100%);
+}
+
+.diagonal-cut-reverse {
+    clip-path: polygon(0 10%, 100% 0, 100% 100%, 0 100%);
+}
+
+.diagonal-up {
+    clip-path: polygon(0 10%, 100% 0, 100% 100%, 0% 100%);
+}
+
+.editorial-mask {
+    mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+}
+
+/* Custom scrollbar for better editorial feel */
+::-webkit-scrollbar {
+    width: 4px;
+}
+::-webkit-scrollbar-track {
+    background: #fbf9f9;
+}
+::-webkit-scrollbar-thumb {
+    background: #000000;
+}
+
+@media (max-width: 768px) {
+    .v-cut-right {
+        clip-path: polygon(0 0, 100% 0, 100% 85%, 0 100%);
+    }
+    .v-cut-left {
+        clip-path: polygon(0 0, 100% 0, 100% 85%, 0 100%);
+    }
+}

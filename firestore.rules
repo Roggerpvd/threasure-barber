@@ -1,0 +1,65 @@
+rules_version = '2';
+
+// ──────────────────────────────────────────────────────────────
+// Reglas de seguridad de Firestore — Threasure Barber
+//
+// Cómo aplicarlas:
+// 1. Ve a la consola de Firebase → Firestore Database → Reglas.
+// 2. Pega este contenido completo y publica.
+//
+// IMPORTANTE: reemplaza los correos de la lista ADMIN_EMAILS más abajo
+// por el/los correo(s) que usarás como administrador (los mismos que
+// pongas en la variable de entorno VITE_ADMIN_EMAILS de Vercel).
+// ──────────────────────────────────────────────────────────────
+
+function isSignedIn() {
+  return request.auth != null;
+}
+
+function isAdmin() {
+  return isSignedIn() &&
+    request.auth.token.email in [
+      'tucorreo@gmail.com'
+      // 'otroadmin@gmail.com',
+    ];
+}
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── RESERVAS (citas) ──
+    match /reservas/{reservaId} {
+      // Cualquier persona con sesión iniciada puede crear su propia reserva
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+
+      // El cliente puede leer solo sus propias reservas; el admin puede leer todas
+      allow read: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+
+      // Solo el admin puede confirmar/editar/eliminar reservas (cambiar status, etc.)
+      allow update, delete: if isAdmin();
+    }
+
+    // ── BLOQUEOS de horarios (los define solo el admin) ──
+    match /bloqueos/{bloqueoId} {
+      allow read: if true; // necesario para que los clientes vean horarios disponibles
+      allow write: if isAdmin();
+    }
+
+    // ── COMPRAS DE CURSO ──
+    // Nota: en esta versión del código no se encontró dónde se crean estos
+    // documentos desde el cliente; se deja una regla flexible pero seguirá
+    // protegida de lectura/escritura por desconocidos. Si luego agregas un
+    // formulario de compra de curso, agrega uid: auth.uid al crear el doc
+    // y podrás endurecer esta regla igual que la de "reservas".
+    match /compras_curso/{compraId} {
+      allow create: if isSignedIn();
+      allow read: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    // Por defecto, todo lo demás queda bloqueado
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
