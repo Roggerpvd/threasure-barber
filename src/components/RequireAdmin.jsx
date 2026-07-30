@@ -31,7 +31,7 @@ export default function RequireAdmin({ children }) {
     );
   }
 
-  if (user && isAdmin) {
+  if (isAdmin) {
     return (
       <div>
         <div className="flex justify-end px-6 pt-4">
@@ -47,23 +47,10 @@ export default function RequireAdmin({ children }) {
     );
   }
 
-  // Usuario autenticado pero sin permisos de admin (p.ej. entró con Google como cliente)
-  if (user && !isAdmin) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background px-6">
-        <p className="text-on-background text-center">
-          La cuenta <strong>{user.email}</strong> no tiene permisos de administrador.
-        </p>
-        <button
-          onClick={logout}
-          className="px-6 py-2 bg-primary text-on-primary font-nav-label uppercase tracking-widest"
-        >
-          Cerrar sesión
-        </button>
-      </div>
-    );
-  }
-
+  // Sin permisos de admin: siempre se muestra el formulario de correo y
+  // contraseña privados, aunque ya haya una sesión de Google activa
+  // (p.ej. porque se usó la app como cliente). Al enviar el formulario,
+  // la sesión de Google se reemplaza automáticamente por la de admin.
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-6">
       <form
@@ -73,6 +60,13 @@ export default function RequireAdmin({ children }) {
         <h1 className="font-headline-md text-headline-md text-on-surface text-center mb-2">
           Acceso Administrador
         </h1>
+
+        {user && (
+          <p className="text-xs text-on-background/50 text-center -mt-2 mb-1">
+            Conectado como {user.email}. Ingresa tus credenciales de admin para continuar.
+          </p>
+        )}
+
         <input
           type="email"
           placeholder="Correo"

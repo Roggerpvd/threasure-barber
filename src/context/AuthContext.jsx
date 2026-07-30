@@ -30,7 +30,13 @@ export function AuthProvider({ children }) {
     return unsub;
   }, []);
 
-  const isAdmin = !!user && ADMIN_EMAILS.includes((user.email || '').toLowerCase());
+  // El admin solo cuenta como tal si inició sesión con correo/contraseña
+  // (nunca con Google), aunque use el mismo correo. Así se garantiza que
+  // el panel /admin solo se abra con tu usuario y contraseña privados.
+  const signedInWithPassword =
+    !!user && user.providerData.some(p => p.providerId === 'password');
+  const isAdmin =
+    !!user && signedInWithPassword && ADMIN_EMAILS.includes((user.email || '').toLowerCase());
 
   // Login de clientes: Google, con popup (no saca al usuario de la página)
   const loginWithGoogle = async () => {

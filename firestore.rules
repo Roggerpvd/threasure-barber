@@ -6,20 +6,19 @@ rules_version = '2';
 // Cómo aplicarlas:
 // 1. Ve a la consola de Firebase → Firestore Database → Reglas.
 // 2. Pega este contenido completo y publica.
-//
-// IMPORTANTE: reemplaza los correos de la lista ADMIN_EMAILS más abajo
-// por el/los correo(s) que usarás como administrador (los mismos que
-// pongas en la variable de entorno VITE_ADMIN_EMAILS de Vercel).
 // ──────────────────────────────────────────────────────────────
 
 function isSignedIn() {
   return request.auth != null;
 }
 
+// El admin solo cuenta como tal si inició sesión con correo/contraseña
+// (no con Google), aunque use el mismo correo que un cliente.
 function isAdmin() {
   return isSignedIn() &&
+    request.auth.token.firebase.sign_in_provider == 'password' &&
     request.auth.token.email in [
-      'tucorreo@gmail.com'
+      'roggerpvdz@gmail.com'
       // 'otroadmin@gmail.com',
     ];
 }
@@ -28,33 +27,34 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ── RESERVAS (citas) ──
-    match /reservas/{reservaId} {
-      // Cualquier persona con sesión iniciada puede crear su propia reserva
+    match /reservas/{document} {
       allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
-
-      // El cliente puede leer solo sus propias reservas; el admin puede leer todas
       allow read: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
-
-      // Solo el admin puede confirmar/editar/eliminar reservas (cambiar status, etc.)
       allow update, delete: if isAdmin();
     }
 
-    // ── BLOQUEOS de horarios (los define solo el admin) ──
-    match /bloqueos/{bloqueoId} {
-      allow read: if true; // necesario para que los clientes vean horarios disponibles
+    // ── BLOQUEOS de horarios (los define el admin; los leen todos para ver disponibilidad) ──
+    match /bloqueos/{fecha} {
+      allow read: if true;
       allow write: if isAdmin();
+
+      match /horasBloqueadas/{document=**} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
     }
 
     // ── COMPRAS DE CURSO ──
-    // Nota: en esta versión del código no se encontró dónde se crean estos
-    // documentos desde el cliente; se deja una regla flexible pero seguirá
-    // protegida de lectura/escritura por desconocidos. Si luego agregas un
-    // formulario de compra de curso, agrega uid: auth.uid al crear el doc
-    // y podrás endurecer esta regla igual que la de "reservas".
-    match /compras_curso/{compraId} {
+    match /compras_curso/{document} {
       allow create: if isSignedIn();
       allow read: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
       allow update, delete: if isAdmin();
+    }
+
+    // ── PORTAFOLIO (fotos de cortes, visibles para todos, editables solo por admin) ──
+    match /portafolio/{document} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // Por defecto, todo lo demás queda bloqueado
