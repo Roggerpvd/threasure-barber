@@ -3,6 +3,8 @@ import { db } from '../firebase';
 import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import GoogleLoginButton from '../components/GoogleLoginButton';
+import WeekAvailability from '../components/WeekAvailability';
+import { ALL_TIME_SLOTS, getDayBlocks, getTodayPeru } from '../utils/schedule';
 
 const RECARGO_ESPECIAL = 5;
 
@@ -16,8 +18,6 @@ export default function Reserva() {
   const [time, setTime] = useState('');
   const [useCustomTime, setUseCustomTime] = useState(false);
   const [customTime, setCustomTime] = useState('');
-  const [bloqueo, setBloqueo] = useState(null);
-  const [loadingBloqueo, setLoadingBloqueo] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [magnet, setMagnet] = useState({ x: 0, y: 0 });
 
@@ -28,33 +28,8 @@ export default function Reserva() {
     { id: 'cejas', name: 'PERFILADO DE CEJAS',       price: 5  },
     { id: 'pack',  name: 'CORTE A DOMICILIO',        price: 40 },
   ];
-  
 
-  const allTimeSlots = [
-    { label: '8:00 a.m.',  hour: 8  },
-    { label: '9:00 a.m.',  hour: 9  },
-    { label: '10:00 a.m.', hour: 10 },
-    { label: '11:00 a.m.', hour: 11 },
-    { label: '12:00 p.m.', hour: 12 },
-    { label: '2:00 p.m.',  hour: 14 },
-    { label: '3:00 p.m.',  hour: 15 },
-    { label: '4:00 p.m.',  hour: 16 },
-    { label: '5:00 p.m.',  hour: 17 },
-    { label: '6:00 p.m.',  hour: 18 },
-  ];
-
-  const getDayBlocks = (dateStr) => {
-    if (!dateStr) return [];
-    const d = new Date(dateStr + 'T12:00:00');
-    const dow = d.getDay();
-    switch (dow) {
-      case 1: return [10, 11, 12, 17, 18];
-      case 2: return [14, 15, 16];
-      case 3: return [15, 16, 17];
-      case 5: return [9, 10, 11, 15, 16, 17];
-      default: return [];
-    }
-  };
+  const allTimeSlots = ALL_TIME_SLOTS;
 
   useEffect(() => {
     if (user && !fullName) {
@@ -62,41 +37,7 @@ export default function Reserva() {
     }
   }, [user]);
 
-  const today = (() => {
-  const now = new Date();
-  const peruOffsetMs = -5 * 60 * 60 * 1000; // Perú es UTC-5 fijo, sin horario de verano
-  const peruNow = new Date(now.getTime() + peruOffsetMs);
-  return peruNow.toISOString().split('T')[0];
-  })();
-
-  useEffect(() => {
-    if (!date) { setBloqueo(null); return; }
-    setLoadingBloqueo(true);
-    getDoc(doc(db, 'bloqueos', date))
-      .then(snap => setBloqueo(snap.exists() ? snap.data() : null))
-      .catch(err => console.error('Error consultando bloqueo:', err))
-      .finally(() => setLoadingBloqueo(false));
-  }, [date]);
-
-  const availableSlots = (() => {
-  let slots = allTimeSlots;
-  if (date === today) {
-    const now = new Date();
-    const peruOffsetMs = -5 * 60 * 60 * 1000; // Perú es UTC-5 fijo
-    const peruNow = new Date(now.getTime() + peruOffsetMs);
-    const currentHour = peruNow.getUTCHours();
-    slots = slots.filter(s => s.hour > currentHour);
-  }
-  if (bloqueo?.allDay) return [];
-  if (bloqueo?.horasBloquedas?.length) {
-    slots = slots.filter(s => !bloqueo.horasBloquedas.includes(s.hour));
-  }
-  const dayBlocks = getDayBlocks(date);
-  if (dayBlocks.length) {
-    slots = slots.filter(s => !dayBlocks.includes(s.hour));
-  }
-  return slots;
-  })();
+  const today = getTodayPeru();
 
   const formatCustomTime = (val) => {
     if (!val) return '';
@@ -396,95 +337,64 @@ export default function Reserva() {
                   </div>
 
                   {/* Fecha y Hora */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                    <div>
-                      <label className="block font-nav-label text-[11px] uppercase tracking-widest text-on-background/40 mb-4">
-                        FECHA
+                  <div>
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                      <label className="font-nav-label text-[11px] uppercase tracking-widest text-on-background/40">
+                        FECHA Y HORARIO
                       </label>
-                      <input
-                        className="w-full bg-surface-container-low text-primary border-outline/10 px-6 py-4 font-nav-label tracking-widest text-sm focus:ring-2 focus:ring-primary/20 transition-shadow"
-                        required
-                        type="date"
-                        min={today}
-                        value={date}
-                        onChange={handleDateChange}
-                      />
+                      <button
+                        type="button"
+                        onClick={handleToggleCustomTime}
+                        className={`font-nav-label text-[10px] uppercase tracking-widest px-3 py-1 border transition-all active:scale-95 ${
+                          useCustomTime
+                            ? 'border-primary bg-primary text-on-primary'
+                            : 'border-outline/20 text-on-background/40 hover:border-primary hover:text-primary'
+                        }`}
+                      >
+                        {useCustomTime ? '✕ CANCELAR' : '+ HORARIO ESPECIAL'}
+                      </button>
                     </div>
 
-                    <div>
-                      <div className="flex items-center justify-between mb-4">
-                        <label className="font-nav-label text-[11px] uppercase tracking-widest text-on-background/40">
-                          HORARIO
-                        </label>
-                        <button
-                          type="button"
-                          onClick={handleToggleCustomTime}
-                          className={`font-nav-label text-[10px] uppercase tracking-widest px-3 py-1 border transition-all active:scale-95 ${
-                            useCustomTime
-                              ? 'border-primary bg-primary text-on-primary'
-                              : 'border-outline/20 text-on-background/40 hover:border-primary hover:text-primary'
-                          }`}
-                        >
-                          {useCustomTime ? '✕ CANCELAR' : '+ HORARIO ESPECIAL'}
-                        </button>
-                      </div>
-
-                      {!useCustomTime && (
-                        <>
-                          {loadingBloqueo ? (
-                            <p className="font-nav-label text-[11px] uppercase tracking-widest text-on-background/30 py-4 flex items-center gap-2">
-                              <span className="inline-block w-3 h-3 border-2 border-on-background/30 border-t-primary rounded-full animate-spin"></span>
-                              Verificando disponibilidad...
-                            </p>
-                          ) : bloqueo?.allDay ? (
-                            <p className="font-nav-label text-[11px] uppercase tracking-widest text-on-background/30 py-4">
-                              No hay atención este día. Por favor elige otra fecha.
-                            </p>
-                          ) : availableSlots.length === 0 ? (
-                            <p className="font-nav-label text-[11px] uppercase tracking-widest text-on-background/30 py-4">
-                              No hay horarios disponibles. Selecciona otra fecha o usa horario especial.
-                            </p>
-                          ) : (
-                            <div className="grid grid-cols-2 gap-2">
-                              {availableSlots.map(slot => (
-                                <label key={slot.label} className="cursor-pointer">
-                                  <input
-                                    className="peer hidden"
-                                    name="time"
-                                    type="radio"
-                                    value={slot.label}
-                                    checked={time === slot.label}
-                                    onChange={() => handleSlotSelect(slot.label)}
-                                  />
-                                  <div className={`text-center py-3 border font-nav-label text-[11px] transition-all duration-200 active:scale-95 ${
-                                    time === slot.label
-                                      ? 'bg-primary border-primary text-on-primary scale-[1.03]'
-                                      : 'border-outline/10 text-on-background/60 hover:border-primary'
-                                  }`}>
-                                    {slot.label}
-                                  </div>
-                                </label>
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      )}
-
-                      {useCustomTime && (
-                        <div className="space-y-3">
-                          <input
-                            type="time"
-                            className="w-full bg-surface-container-low text-primary border border-primary/40 px-6 py-4 font-nav-label tracking-widest text-sm focus:ring-2 focus:ring-primary/20"
-                            value={customTime}
-                            onChange={(e) => setCustomTime(e.target.value)}
-                            required
-                          />
-                          <p className="font-nav-label text-[10px] uppercase tracking-widest text-primary/60">
-                            + S/. {RECARGO_ESPECIAL} por horario especial
+                    {!useCustomTime && (
+                      <>
+                        <WeekAvailability
+                          selectedDate={date}
+                          selectedTime={time}
+                          onSelectSlot={(dateStr, slot) => {
+                            setDate(dateStr);
+                            handleSlotSelect(slot.label);
+                          }}
+                        />
+                        {date && time && (
+                          <p className="mt-4 font-nav-label text-[11px] uppercase tracking-widest text-primary">
+                            Elegiste: {date} — {time}
                           </p>
-                        </div>
-                      )}
-                    </div>
+                        )}
+                      </>
+                    )}
+
+                    {useCustomTime && (
+                      <div className="max-w-sm space-y-3">
+                        <input
+                          className="w-full bg-surface-container-low text-primary border-outline/10 px-6 py-4 font-nav-label tracking-widest text-sm focus:ring-2 focus:ring-primary/20 transition-shadow"
+                          required
+                          type="date"
+                          min={today}
+                          value={date}
+                          onChange={handleDateChange}
+                        />
+                        <input
+                          type="time"
+                          className="w-full bg-surface-container-low text-primary border border-primary/40 px-6 py-4 font-nav-label tracking-widest text-sm focus:ring-2 focus:ring-primary/20"
+                          value={customTime}
+                          onChange={(e) => setCustomTime(e.target.value)}
+                          required
+                        />
+                        <p className="font-nav-label text-[10px] uppercase tracking-widest text-primary/60">
+                          + S/. {RECARGO_ESPECIAL} por horario especial
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* CTA */}

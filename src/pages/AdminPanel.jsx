@@ -5,6 +5,7 @@ import {
   doc, setDoc, deleteDoc, getDoc, collection, getDocs,
   query, where, updateDoc
 } from 'firebase/firestore';
+import WeekAvailability from '../components/WeekAvailability';
 
 
 // El acceso a este panel ahora se controla con Firebase Auth (ver RequireAdmin.jsx),
@@ -910,6 +911,22 @@ export default function AdminPanel() {
 
 
 
+
+
+        {/* ── VISTA SEMANAL DE DISPONIBILIDAD ── */}
+        <div className="mb-16">
+          <h2 className="font-nav-label text-[11px] uppercase tracking-widest text-on-background/40 mb-4">
+            DISPONIBILIDAD DE LA SEMANA
+          </h2>
+          <WeekAvailability
+            bloqueosByDate={bloqueos}
+            selectedDate={selectedDate}
+            onDayHeaderClick={(fecha) => setSelectedDate(fecha)}
+          />
+          <p className="font-nav-label text-[10px] uppercase tracking-widest text-on-background/30 mt-3">
+            Toca el nombre de un día para editar sus bloqueos abajo.
+          </p>
+        </div>
 
         {/* ── BLOQUEO DE DÍAS/HORAS ── */}
 
