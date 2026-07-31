@@ -65,16 +65,21 @@ export default function WeekAvailability({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekDates[0], weekDates[6], externalBloqueos]);
 
-  const isTaken = (dateStr, hour) => {
+  // Cerrado: fuera de horario fijo semanal, ya pasó, o el admin bloqueó el día completo.
+  const isClosed = (dateStr, hour) => {
     if (dateStr < (minDate || today)) return true;
     if (dateStr === today && hour <= currentHour) return true;
     if (getDayBlocks(dateStr).includes(hour)) return true;
-    const b = bloqueosByDate[dateStr];
-    if (!b) return false;
-    if (b.allDay) return true;
-    if (b.horasBloquedas?.includes(hour)) return true;
+    if (bloqueosByDate[dateStr]?.allDay) return true;
     return false;
   };
+
+  // Reservado: esa hora específica está tomada (reserva confirmada o bloqueo puntual del admin).
+  const isReserved = (dateStr, hour) => {
+    return !!bloqueosByDate[dateStr]?.horasBloquedas?.includes(hour);
+  };
+
+  const isTaken = (dateStr, hour) => isClosed(dateStr, hour) || isReserved(dateStr, hour);
 
   const isDayFullyClosed = (dateStr) => {
     if (bloqueosByDate[dateStr]?.allDay) return true;
@@ -126,13 +131,17 @@ export default function WeekAvailability({
       </div>
 
       {/* Leyenda */}
-      <div className="flex items-center gap-4 mb-3 text-[10px] font-nav-label uppercase tracking-widest text-on-background/40">
+      <div className="flex items-center gap-4 mb-3 text-[10px] font-nav-label uppercase tracking-widest text-on-background/40 flex-wrap">
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 inline-block bg-green-500/20 border border-green-500/50" />
-          Separado / no disponible
+          <span className="w-3 h-3 inline-flex items-center justify-center border border-outline/30 text-[8px] text-on-background/40">✕</span>
+          Cerrado / ya pasó
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 inline-block border border-outline/30" />
+          <span className="w-3 h-3 inline-block bg-green-500/20 border border-green-500/50" />
+          Reservado
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-3 inline-block bg-white border border-outline/30" />
           Disponible
         </span>
       </div>
@@ -177,7 +186,9 @@ export default function WeekAvailability({
                   {slot.label}
                 </td>
                 {weekDates.map(dateStr => {
-                  const taken = isTaken(dateStr, slot.hour);
+                  const reserved = isReserved(dateStr, slot.hour);
+                  const closed = !reserved && isClosed(dateStr, slot.hour);
+                  const taken = reserved || closed;
                   const isSelected = selectedDate === dateStr && selectedTime === slot.label;
                   const clickable = !taken && !!onSelectSlot;
                   return (
@@ -186,17 +197,28 @@ export default function WeekAvailability({
                         type="button"
                         disabled={!clickable}
                         onClick={() => clickable && onSelectSlot(dateStr, slot)}
-                        className={`w-full h-9 flex items-center justify-center transition-colors ${
-                          taken
-                            ? 'bg-green-500/20 border border-green-500/40 cursor-not-allowed'
-                            : isSelected
-                              ? 'bg-primary border border-primary text-on-primary'
-                              : clickable
-                                ? 'border border-outline/15 hover:border-primary hover:bg-primary/5 cursor-pointer'
-                                : 'border border-outline/10'
+                        className={`w-full h-10 flex items-center justify-center transition-colors ${
+                          reserved
+                            ? 'bg-green-500/20 border border-green-500/50 cursor-not-allowed'
+                            : closed
+                              ? 'bg-outline/5 border border-outline/15 cursor-not-allowed'
+                              : isSelected
+                                ? 'bg-primary border border-primary text-on-primary'
+                                : clickable
+                                  ? 'bg-white border border-outline/15 hover:border-primary hover:bg-primary/5 cursor-pointer'
+                                  : 'bg-white border border-outline/10'
                         }`}
-                        aria-label={`${dateStr} ${slot.label}${taken ? ' — no disponible' : ' — disponible'}`}
-                      />
+                        aria-label={`${dateStr} ${slot.label}${reserved ? ' — reservado' : closed ? ' — cerrado' : ' — disponible'}`}
+                      >
+                        {reserved && (
+                          <span className="text-[7px] font-nav-label uppercase tracking-tight text-green-700 leading-none">
+                            Reservado
+                          </span>
+                        )}
+                        {closed && (
+                          <span className="text-[10px] text-on-background/25 leading-none">✕</span>
+                        )}
+                      </button>
                     </td>
                   );
                 })}
