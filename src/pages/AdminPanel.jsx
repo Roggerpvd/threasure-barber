@@ -306,15 +306,29 @@ export default function AdminPanel() {
 
 
 
-  const handleRechazarReserva = async (reservaId) => {
+  const handleRechazarReserva = async (reserva) => {
 
-    await deleteDoc(doc(db, 'reservas', reservaId));
+    await deleteDoc(doc(db, 'reservas', reserva.id));
+
+    // Liberamos la hora que se había bloqueado al crear la reserva
+    if (!reserva.isCustomTime && reserva.hour !== null && reserva.hour !== undefined) {
+      const bloqueoRef = doc(db, 'bloqueos', reserva.date);
+      const bloqueoSnap = await getDoc(bloqueoRef);
+      if (bloqueoSnap.exists()) {
+        const existente = bloqueoSnap.data();
+        const nuevasHoras = (existente.horasBloquedas || []).filter(h => h !== reserva.hour);
+        await setDoc(bloqueoRef, { ...existente, horasBloquedas: nuevasHoras });
+      }
+    }
 
     await fetchReservasPendientes();
+
+    await fetchBloqueos();
 
     setConfirmDialog(null);
 
   };
+
 
 
 
@@ -642,7 +656,13 @@ export default function AdminPanel() {
 
                     <p className="font-nav-label text-sm text-primary uppercase tracking-widest">
 
-                      {reserva.fullName} — {reserva.date} a las {reserva.time}
+                      {reserva.fullName}
+
+                    </p>
+
+                    <p className="font-nav-label text-[11px] uppercase tracking-widest text-on-background/50 mt-1">
+
+                      Reservado a las {reserva.time} — {reserva.date}
 
                     </p>
 
@@ -1320,7 +1340,7 @@ export default function AdminPanel() {
 
                   confirmDialog.type === 'rechazar'
 
-                    ? handleRechazarReserva(confirmDialog.payload.id)
+                    ? handleRechazarReserva(confirmDialog.payload)
 
                     : handleEliminar(confirmDialog.payload)
 
