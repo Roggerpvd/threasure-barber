@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 export default function RequireAdmin({ children }) {
-  const { user, loadingAuth, isAdmin, loginAdmin, logout } = useAuth();
-  const [email, setEmail] = useState('');
+  const { user, loadingAuth, isAdmin, adminUsername, loginAdmin, logout } = useAuth();
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -14,9 +14,9 @@ export default function RequireAdmin({ children }) {
     setError('');
     setLoading(true);
     try {
-      await loginAdmin(email, password);
+      await loginAdmin(username, password);
     } catch (err) {
-      setError('Correo o contraseña incorrectos.');
+      setError('Usuario o contraseña incorrectos.');
       setShake(true);
       setTimeout(() => setShake(false), 500);
     }
@@ -39,7 +39,7 @@ export default function RequireAdmin({ children }) {
             onClick={logout}
             className="text-sm text-on-background/60 hover:text-on-background underline"
           >
-            Cerrar sesión ({user.email})
+            Cerrar sesión ({adminUsername})
           </button>
         </div>
         {children}
@@ -61,17 +61,13 @@ export default function RequireAdmin({ children }) {
           Acceso Administrador
         </h1>
 
-        {user && (
-          <p className="text-xs text-on-background/50 text-center -mt-2 mb-1">
-            Conectado como {user.email}. Ingresa tus credenciales de admin para continuar.
-          </p>
-        )}
-
         <input
-          type="email"
-          placeholder="Correo"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          type="text"
+          placeholder="Usuario"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          autoCapitalize="none"
+          autoCorrect="off"
           className="border border-outline/20 px-4 py-3 bg-background text-on-background"
           required
         />

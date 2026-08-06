@@ -33,18 +33,10 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // ── BLOQUEOS de horarios (el admin controla todo; un cliente que reserva
-    // puede además marcar su propia hora como ocupada, para evitar choques
-    // con otro cliente mientras su pago está pendiente de confirmar) ──
+    // ── BLOQUEOS de horarios (los define el admin; los leen todos para ver disponibilidad) ──
     match /bloqueos/{fecha} {
       allow read: if true;
-      allow create: if isAdmin() || isSignedIn();
-      allow update: if isAdmin() || (
-        isSignedIn() &&
-        request.resource.data.allDay == resource.data.allDay &&
-        request.resource.data.reason == resource.data.reason
-      );
-      allow delete: if isAdmin();
+      allow write: if isAdmin();
 
       match /horasBloqueadas/{document=**} {
         allow read: if true;

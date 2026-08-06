@@ -86,41 +86,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Section 2.5: CORTE A DOMICILIO — DESTACADO */}
-      <section className="relative bg-primary text-on-primary py-20 px-margin-mobile md:px-margin-desktop overflow-hidden">
-        <div className="absolute -right-16 -bottom-16 opacity-10 pointer-events-none select-none">
-          <span className="material-symbols-outlined" style={{ fontSize: '320px' }}>home</span>
-        </div>
-        <div className="relative z-10 max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="material-symbols-outlined text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>home</span>
-              <span className="font-label-caps text-label-caps tracking-[0.3em] uppercase opacity-80">
-                Servicio exclusivo
-              </span>
-            </div>
-            <h2 className="font-display-lg text-3xl md:text-headline-lg uppercase mb-4 leading-tight">
-              CORTE A DOMICILIO
-            </h2>
-            <p className="font-body-md text-body-md opacity-90 max-w-lg mb-6">
-              Llevamos el estilo Threasure hasta tu puerta en Ilo. Ideal para
-              antes de un evento, una entrevista, o simplemente porque tu
-              tiempo vale más que una fila de espera.
-            </p>
-            <div className="flex items-center gap-4 flex-wrap">
-              <Link to="/reserva">
-                <button className="bg-background text-on-background px-8 py-4 font-button text-button tracking-widest uppercase hover:opacity-90 transition-all active:scale-95">
-                  AGENDAR A DOMICILIO
-                </button>
-              </Link>
-              <span className="font-label-caps text-label-caps tracking-widest uppercase opacity-80">
-                Desde S/. 40
-              </span>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Section 3: ABOUT */}
       <section className="bg-white text-black py-24 px-margin-mobile md:px-margin-desktop relative overflow-hidden">
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-gutter">

@@ -6,9 +6,6 @@ import {
   query, where, updateDoc
 } from 'firebase/firestore';
 import WeekAvailability from '../components/WeekAvailability';
-import EnableNotificationsButton from '../components/EnableNotificationsButton';
-import useNewBookingAlert from '../hooks/useNewBookingAlert';
-import useAppointmentReminder from '../hooks/useAppointmentReminder';
 
 
 // El acceso a este panel ahora se controla con Firebase Auth (ver RequireAdmin.jsx),
@@ -123,22 +120,6 @@ export default function AdminPanel() {
 
   }, [authed]);
 
-  // Notificacion + sonido en tiempo real cuando llega una reserva nueva.
-  useNewBookingAlert(authed, () => {
-    fetchReservasPendientes();
-    fetchBloqueos();
-  });
-
-  // Recordatorio 30 minutos antes de cada cita confirmada (mientras el panel este abierto).
-  useAppointmentReminder(
-    reservasConfirmadas.filter(r => r.date >= today),
-    (appt) => ({
-      title: 'Cita en 30 minutos',
-      body: `${appt.fullName || 'Cliente'} - ${appt.time || ''} - ${(appt.services || []).join(', ')}`,
-    }),
-    authed
-  );
-
 
 
 
@@ -190,214 +171,150 @@ export default function AdminPanel() {
 
   const handleGuardar = async () => {
 
-    if (!selectedDate) return;
+    if (!selectedDate) return;
 
-    setSaving(true);
+    setSaving(true);
 
-    try {
+    try {
 
-      // Preservamos las horas ya reservadas (citas confirmadas) al guardar
-      // un bloqueo manual: son cosas independientes.
-      const horasReservadasExistentes = bloqueos[selectedDate]?.horasReservadas || [];
+      if (!allDay && horasBloquedas.length === 0) {
 
-      if (!allDay && horasBloquedas.length === 0) {
+        await deleteDoc(doc(db, 'bloqueos', selectedDate));
 
-        if (horasReservadasExistentes.length > 0) {
+        setFeedback('Bloqueo eliminado.');
 
-          await setDoc(doc(db, 'bloqueos', selectedDate), {
+      } else {
 
-            allDay: false,
+        await setDoc(doc(db, 'bloqueos', selectedDate), {
 
-            horasBloquedas: [],
+          allDay,
 
-            horasReservadas: horasReservadasExistentes,
+          horasBloquedas: allDay ? [] : horasBloquedas,
 
-            reason: '',
+          reason: reason.trim(),
 
-          });
+        });
 
-        } else {
+        setFeedback('✔ Bloqueo guardado.');
 
-          await deleteDoc(doc(db, 'bloqueos', selectedDate));
+      }
 
-        }
+      await fetchBloqueos();
 
-        setFeedback('Bloqueo eliminado.');
+    } catch (err) {
 
-      } else {
+      setFeedback('Error al guardar. Revisa Firebase.');
 
-        await setDoc(doc(db, 'bloqueos', selectedDate), {
+      console.error(err);
 
-          allDay,
+    }
 
-          horasBloquedas: allDay ? [] : horasBloquedas,
+    setSaving(false);
 
-          horasReservadas: horasReservadasExistentes,
+    setTimeout(() => setFeedback(''), 3000);
 
-          reason: reason.trim(),
-
-        });
-
-        setFeedback('✔ Bloqueo guardado.');
-
-      }
-
-      await fetchBloqueos();
-
-    } catch (err) {
-
-      setFeedback('Error al guardar. Revisa Firebase.');
-
-      console.error(err);
-
-    }
-
-    setSaving(false);
-
-    setTimeout(() => setFeedback(''), 3000);
-
-  };
+  };
 
 
 
 
   const handleEliminar = async (fecha) => {
 
-    // Si ese día tiene citas reservadas, no borramos el documento entero:
-    // solo quitamos el bloqueo manual y dejamos las horas reservadas intactas.
-    const horasReservadasExistentes = bloqueos[fecha]?.horasReservadas || [];
+    await deleteDoc(doc(db, 'bloqueos', fecha));
 
-    if (horasReservadasExistentes.length > 0) {
+    await fetchBloqueos();
 
-      await setDoc(doc(db, 'bloqueos', fecha), {
+    if (selectedDate === fecha) {
 
-        allDay: false,
+      setAllDay(false);
 
-        horasBloquedas: [],
+      setHorasBloquedas([]);
 
-        horasReservadas: horasReservadasExistentes,
+      setReason('');
 
-        reason: '',
+    }
 
-      });
+    setConfirmDialog(null);
 
-    } else {
-
-      await deleteDoc(doc(db, 'bloqueos', fecha));
-
-    }
-
-    await fetchBloqueos();
-
-    if (selectedDate === fecha) {
-
-      setAllDay(false);
-
-      setHorasBloquedas([]);
-
-      setReason('');
-
-    }
-
-    setConfirmDialog(null);
-
-  };
+  };
 
 
 
 
   const handleConfirmarPago = async (reserva) => {
 
-    setConfirmando(reserva.id);
+    setConfirmando(reserva.id);
 
-    try {
+    try {
 
-      const bloqueoRef = doc(db, 'bloqueos', reserva.date);
-
-      const bloqueoSnap = await getDoc(bloqueoRef);
-
-      const existente = bloqueoSnap.exists()
-
-        ? bloqueoSnap.data()
-
-        : { allDay: false, horasBloquedas: [], horasReservadas: [], reason: '' };
-
-
-
-
-      // Al confirmar el pago, la hora queda RESERVADA (horasReservadas).
-      // Esto es distinto de horasBloquedas, que son los cierres manuales del admin.
-      if (!existente.allDay && reserva.hour !== null && reserva.hour !== undefined) {
-
-        const nuevasReservadas = [...new Set([...(existente.horasReservadas || []), reserva.hour])];
-
-        await setDoc(bloqueoRef, {
-
-          allDay: existente.allDay || false,
-
-          horasBloquedas: existente.horasBloquedas || [],
-
-          horasReservadas: nuevasReservadas,
-
-          reason: existente.reason || '',
-
-        });
-
-      }
-
-
-
-
-      await updateDoc(doc(db, 'reservas', reserva.id), { status: 'confirmada' });
-
-      await fetchBloqueos();
-
-      await fetchReservasPendientes();
-
-      await fetchReservasConfirmadas();
-
-      setJustConfirmed(reserva.id);
-
-      setTimeout(() => setJustConfirmed(null), 2000);
-
-    } catch (err) {
-
-      console.error('Error confirmando pago:', err);
-
-      alert('Error al confirmar. Revisa la consola.');
-
-    }
-
-    setConfirmando(null);
-
-  };
-
-
-
-
-  const handleRechazarReserva = async (reserva) => {
-
-    await deleteDoc(doc(db, 'reservas', reserva.id));
-
-    // Liberamos la hora que se había bloqueado al crear la reserva
-    if (!reserva.isCustomTime && reserva.hour !== null && reserva.hour !== undefined) {
       const bloqueoRef = doc(db, 'bloqueos', reserva.date);
+
       const bloqueoSnap = await getDoc(bloqueoRef);
-      if (bloqueoSnap.exists()) {
-        const existente = bloqueoSnap.data();
-        const nuevasHoras = (existente.horasBloquedas || []).filter(h => h !== reserva.hour);
-        await setDoc(bloqueoRef, { ...existente, horasBloquedas: nuevasHoras });
+
+      const existente = bloqueoSnap.exists()
+
+        ? bloqueoSnap.data()
+
+        : { allDay: false, horasBloquedas: [], reason: '' };
+
+
+
+
+      if (!existente.allDay && reserva.hour !== null && reserva.hour !== undefined) {
+
+        const nuevasHoras = [...new Set([...(existente.horasBloquedas || []), reserva.hour])];
+
+        await setDoc(bloqueoRef, {
+
+          allDay: false,
+
+          horasBloquedas: nuevasHoras,
+
+          reason: existente.reason || '',
+
+        });
+
       }
+
+
+
+
+      await updateDoc(doc(db, 'reservas', reserva.id), { status: 'confirmada' });
+
+      await fetchBloqueos();
+
+      await fetchReservasPendientes();
+
+      await fetchReservasConfirmadas();
+
+      setJustConfirmed(reserva.id);
+
+      setTimeout(() => setJustConfirmed(null), 2000);
+
+    } catch (err) {
+
+      console.error('Error confirmando pago:', err);
+
+      alert('Error al confirmar. Revisa la consola.');
+
     }
 
-    await fetchReservasPendientes();
+    setConfirmando(null);
 
-    await fetchBloqueos();
+  };
+
+
+
+
+  const handleRechazarReserva = async (reservaId) => {
+
+    await deleteDoc(doc(db, 'reservas', reservaId));
+
+    await fetchReservasPendientes();
 
     setConfirmDialog(null);
 
   };
-
 
 
 
@@ -529,17 +446,20 @@ export default function AdminPanel() {
   // ── PANEL ──
 
   const bloqueosSorted = Object.entries(bloqueos)
-    // Solo mostramos en "bloqueos activos" los que el admin cerro a mano
-    // (allDay o con horas en horasBloquedas). Las horas en horasReservadas
-    // son citas confirmadas, no bloqueos manuales.
-    .filter(([fecha]) => fecha >= today)
-    .filter(([, data]) => data.allDay || (data.horasBloquedas && data.horasBloquedas.length > 0))
-    .filter(([fecha, data]) =>
-      searchBloqueo === '' ||
-      fecha.includes(searchBloqueo) ||
-      data.reason?.toLowerCase().includes(searchBloqueo.toLowerCase())
-    )
-    .sort(([a], [b]) => a.localeCompare(b));
+
+    .filter(([fecha]) => fecha >= today)
+
+    .filter(([fecha, data]) =>
+
+      searchBloqueo === '' ||
+
+      fecha.includes(searchBloqueo) ||
+
+      data.reason?.toLowerCase().includes(searchBloqueo.toLowerCase())
+
+    )
+
+    .sort(([a], [b]) => a.localeCompare(b));
 
 
 
@@ -590,16 +510,19 @@ export default function AdminPanel() {
 
           </div>
 
-          <div className="flex items-center gap-3">
-            <EnableNotificationsButton />
-            <button
-              onClick={() => setAuthed(false)}
-              className="font-nav-label text-[10px] uppercase tracking-widest text-on-background/30 hover:text-primary transition-colors"
-            >
-              SALIR
-            </button>
-          </div>
-        </div>
+          <button
+
+            onClick={() => setAuthed(false)}
+
+            className="font-nav-label text-[10px] uppercase tracking-widest text-on-background/30 hover:text-primary transition-colors"
+
+          >
+
+            SALIR
+
+          </button>
+
+        </div>
 
 
 
@@ -719,13 +642,7 @@ export default function AdminPanel() {
 
                     <p className="font-nav-label text-sm text-primary uppercase tracking-widest">
 
-                      {reserva.fullName}
-
-                    </p>
-
-                    <p className="font-nav-label text-[11px] uppercase tracking-widest text-on-background/50 mt-1">
-
-                      Reservado a las {reserva.time} — {reserva.date}
+                      {reserva.fullName} — {reserva.date} a las {reserva.time}
 
                     </p>
 
@@ -1403,7 +1320,7 @@ export default function AdminPanel() {
 
                   confirmDialog.type === 'rechazar'
 
-                    ? handleRechazarReserva(confirmDialog.payload)
+                    ? handleRechazarReserva(confirmDialog.payload.id)
 
                     : handleEliminar(confirmDialog.payload)
 

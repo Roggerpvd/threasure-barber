@@ -13,13 +13,18 @@ export const ALL_TIME_SLOTS = [
   { label: '6:00 p.m.', hour: 18 },
 ];
 
-// Antes había horas cerradas fijas según el día de la semana. Ahora TODOS los
-// horarios están disponibles por defecto: la única forma de cerrar un horario
-// es que el admin lo marque manualmente como no disponible desde el panel de
-// administración (colección "bloqueos"). Se deja la función (devolviendo
-// siempre un arreglo vacío) para no romper el código que ya la importa.
-export function getDayBlocks() {
-  return [];
+// Horas cerradas fijas según el día de la semana (0=domingo ... 6=sábado)
+export function getDayBlocks(dateStr) {
+  if (!dateStr) return [];
+  const d = new Date(dateStr + 'T12:00:00');
+  const dow = d.getDay();
+  switch (dow) {
+    case 1: return [10, 11, 12, 17, 18];
+    case 2: return [14, 15, 16];
+    case 3: return [15, 16, 17];
+    case 5: return [9, 10, 11, 15, 16, 17];
+    default: return [];
+  }
 }
 
 export const DAY_NAMES_SHORT = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
