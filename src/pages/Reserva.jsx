@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import GoogleLoginButton from '../components/GoogleLoginButton';
 import WeekAvailability from '../components/WeekAvailability';
@@ -111,6 +111,7 @@ export default function Reserva() {
   const total = calculateTotal();
   const adelanto = calculateAdelanto();
   const resto = calculateResto();
+  const hour = useCustomTime ? null : (allTimeSlots.find(s => s.label === time)?.hour ?? null);
 
   try {
     await addDoc(collection(db, 'reservas'), {
@@ -119,7 +120,7 @@ export default function Reserva() {
       fullName,
       date,
       time: selectedTime,
-      hour: useCustomTime ? null : (allTimeSlots.find(s => s.label === time)?.hour ?? null),
+      hour,
       isCustomTime: useCustomTime,
       services: selectedServices.map(s => s.name),
       total,
@@ -128,6 +129,20 @@ export default function Reserva() {
       status: 'pendiente',
       createdAt: serverTimestamp(),
     });
+
+    // Bloqueamos la hora de inmediato para que nadie más pueda elegirla
+    // mientras esta reserva espera confirmación de pago.
+    if (!useCustomTime && hour !== null) {
+      const bloqueoRef = doc(db, 'bloqueos', date);
+      const bloqueoSnap = await getDoc(bloqueoRef);
+      const existente = bloqueoSnap.exists()
+        ? bloqueoSnap.data()
+        : { allDay: false, horasBloquedas: [], reason: '' };
+      if (!existente.allDay) {
+        const nuevasHoras = [...new Set([...(existente.horasBloquedas || []), hour])];
+        await setDoc(bloqueoRef, { ...existente, horasBloquedas: nuevasHoras });
+      }
+    }
   } catch (err) {
     console.error('Error guardando reserva:', err);
   }
@@ -144,7 +159,6 @@ export default function Reserva() {
     setTime('');
     setUseCustomTime(false);
     setCustomTime('');
-    setBloqueo(null);
   };
 
   const handleMagnet = (e) => {
@@ -596,7 +610,21 @@ export default function Reserva() {
 
       {/* Botón de WhatsApp para mandar la captura */}
       
-        <a href="https://wa.me/51930561385"
+        <a href={`https://wa.me/51930561385?text=${encodeURIComponent(
+          (() => {
+            const dayName = date
+              ? new Date(date + 'T12:00:00').toLocaleDateString('es-PE', { weekday: 'long' })
+              : '';
+            const dayNameCap = dayName ? dayName.charAt(0).toUpperCase() + dayName.slice(1) : '';
+            return (
+              `Hola! Les envío mi comprobante de pago.\n` +
+              `Servicio: ${selectedServices.map(s => s.name).join(', ')}\n` +
+              `Día: ${dayNameCap}\n` +
+              `Hora: ${time}${date ? ` (${date})` : ''}\n` +
+              `Nombre: ${fullName}`
+            );
+          })()
+        )}`}
         target="_blank"
         rel="noopener noreferrer"
         className="w-full flex items-center justify-center gap-3 bg-[#25D366] text-white px-10 py-5 font-nav-label text-[11px] uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all mb-6"
