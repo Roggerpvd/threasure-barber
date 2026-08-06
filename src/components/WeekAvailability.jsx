@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../firebase';
-import { collection, query, where, orderBy, getDocs, documentId } from 'firebase/firestore';
+import { collection, query, where, getDocs, documentId } from 'firebase/firestore';
 import {
   ALL_TIME_SLOTS,
-  getDayBlocks,
   getWeekDates,
   formatDayLabel,
   getTodayPeru,
@@ -18,8 +17,14 @@ import {
  *   tiene todos los bloqueos cargados).
  * - Si no, la trae ella misma de Firestore para la semana visible (modo cliente).
  *
- * Verde = horario ya separado / cerrado / pasado.
- * Vacío/borde = horario disponible.
+ * Cada documento de "bloqueos/{fecha}" puede tener:
+ *   - allDay: true            -> todo el día no disponible (lo puso el admin)
+ *   - horasBloquedas: [hour]  -> esas horas puntuales no disponibles (el admin las cerró)
+ *   - horasReservadas: [hour] -> esas horas ya tienen una cita confirmada (cliente)
+ *
+ * Verde = disponible (se puede reservar).
+ * Rojo  = reservado (ya hay una cita confirmada en ese horario).
+ * X     = no disponible (lo cerró el admin, o ya pasó / está fuera de rango).
  */
 export default function WeekAvailability({
   bloqueosByDate: externalBloqueos,
@@ -65,21 +70,30 @@ export default function WeekAvailability({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekDates[0], weekDates[6], externalBloqueos]);
 
-  // Cerrado: fuera de horario fijo semanal, ya pasó, o el admin bloqueó el día completo.
-  const isClosed = (dateStr, hour) => {
+  // Ya pasó o está fuera del rango permitido para reservar.
+  const isPast = (dateStr, hour) => {
     if (dateStr < (minDate || today)) return true;
     if (dateStr === today && hour <= currentHour) return true;
-    if (getDayBlocks(dateStr).includes(hour)) return true;
-    if (bloqueosByDate[dateStr]?.allDay) return true;
     return false;
   };
 
-  // Reservado: esa hora específica está tomada (reserva confirmada o bloqueo puntual del admin).
-  const isReserved = (dateStr, hour) => {
+  // El admin marcó ese horario (o el día completo) como no disponible.
+  const isAdminBlocked = (dateStr, hour) => {
+    if (bloqueosByDate[dateStr]?.allDay) return true;
     return !!bloqueosByDate[dateStr]?.horasBloquedas?.includes(hour);
   };
 
-  const isTaken = (dateStr, hour) => isClosed(dateStr, hour) || isReserved(dateStr, hour);
+  // Ya existe una cita confirmada en ese horario.
+  const isReserved = (dateStr, hour) => {
+    return !!bloqueosByDate[dateStr]?.horasReservadas?.includes(hour);
+  };
+
+  // "No disponible" (X) = ya pasó, o el admin lo cerró — pero no cuenta si
+  // ya está reservado (eso se muestra en rojo, tiene prioridad visual).
+  const isUnavailable = (dateStr, hour) =>
+    !isReserved(dateStr, hour) && (isPast(dateStr, hour) || isAdminBlocked(dateStr, hour));
+
+  const isTaken = (dateStr, hour) => isReserved(dateStr, hour) || isUnavailable(dateStr, hour);
 
   const isDayFullyClosed = (dateStr) => {
     if (bloqueosByDate[dateStr]?.allDay) return true;
@@ -133,16 +147,16 @@ export default function WeekAvailability({
       {/* Leyenda */}
       <div className="flex items-center gap-4 mb-3 text-[10px] font-nav-label uppercase tracking-widest text-on-background/40 flex-wrap">
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 inline-flex items-center justify-center border border-outline/30 text-[8px] text-on-background/40">✕</span>
-          Cerrado / ya pasó
+          <span className="w-3 h-3 inline-block bg-green-500/20 border border-green-500/50" />
+          Disponible
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 inline-block bg-green-500/20 border border-green-500/50" />
+          <span className="w-3 h-3 inline-block bg-red-500/20 border border-red-500/50" />
           Reservado
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 inline-block bg-white border border-outline/30" />
-          Disponible
+          <span className="w-3 h-3 inline-flex items-center justify-center border border-outline/30 text-[8px] text-on-background/40">✕</span>
+          No disponible
         </span>
       </div>
 
@@ -187,8 +201,8 @@ export default function WeekAvailability({
                 </td>
                 {weekDates.map(dateStr => {
                   const reserved = isReserved(dateStr, slot.hour);
-                  const closed = !reserved && isClosed(dateStr, slot.hour);
-                  const taken = reserved || closed;
+                  const unavailable = !reserved && isUnavailable(dateStr, slot.hour);
+                  const taken = reserved || unavailable;
                   const isSelected = selectedDate === dateStr && selectedTime === slot.label;
                   const clickable = !taken && !!onSelectSlot;
                   return (
@@ -199,23 +213,23 @@ export default function WeekAvailability({
                         onClick={() => clickable && onSelectSlot(dateStr, slot)}
                         className={`w-full h-10 flex items-center justify-center transition-colors ${
                           reserved
-                            ? 'bg-green-500/20 border border-green-500/50 cursor-not-allowed'
-                            : closed
+                            ? 'bg-red-500/20 border border-red-500/50 cursor-not-allowed'
+                            : unavailable
                               ? 'bg-outline/5 border border-outline/15 cursor-not-allowed'
                               : isSelected
                                 ? 'bg-primary border border-primary text-on-primary'
                                 : clickable
-                                  ? 'bg-white border border-outline/15 hover:border-primary hover:bg-primary/5 cursor-pointer'
-                                  : 'bg-white border border-outline/10'
+                                  ? 'bg-green-500/20 border border-green-500/50 hover:border-primary hover:bg-primary/10 cursor-pointer'
+                                  : 'bg-green-500/10 border border-green-500/30'
                         }`}
-                        aria-label={`${dateStr} ${slot.label}${reserved ? ' — reservado' : closed ? ' — cerrado' : ' — disponible'}`}
+                        aria-label={`${dateStr} ${slot.label}${reserved ? ' — reservado' : unavailable ? ' — no disponible' : ' — disponible'}`}
                       >
                         {reserved && (
-                          <span className="text-[7px] font-nav-label uppercase tracking-tight text-green-700 leading-none">
+                          <span className="text-[7px] font-nav-label uppercase tracking-tight text-red-700 leading-none">
                             Reservado
                           </span>
                         )}
-                        {closed && (
+                        {unavailable && (
                           <span className="text-[10px] text-on-background/25 leading-none">✕</span>
                         )}
                       </button>
