@@ -3,6 +3,8 @@ import { db } from '../firebase';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import GoogleLoginButton from '../components/GoogleLoginButton';
+import EnableNotificationsButton from '../components/EnableNotificationsButton';
+import useAppointmentReminder from '../hooks/useAppointmentReminder';
 
 const statusStyles = {
   pendiente: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/30',
@@ -39,6 +41,17 @@ export default function MisCitas() {
     fetchCitas();
   }, [user]);
 
+  // Avisa (notificación del navegador + sonido) 30 minutos antes de cada
+  // cita confirmada, mientras esta página esté abierta en el navegador.
+  useAppointmentReminder(
+    citas.filter(c => c.status === 'confirmada'),
+    (cita) => ({
+      title: 'Tu cita es en 30 minutos',
+      body: `Threasure Barber · ${cita.time || ''} · ${(cita.services || []).join(', ')}`,
+    }),
+    !!user
+  );
+
   if (loadingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background pt-20">
@@ -64,9 +77,12 @@ export default function MisCitas() {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-10">
           <h1 className="font-headline-md text-headline-md text-primary">Mis Citas</h1>
-          <button onClick={logout} className="text-sm text-on-background/50 hover:text-on-background underline">
-            Cerrar sesión
-          </button>
+          <div className="flex items-center gap-4">
+            <EnableNotificationsButton />
+            <button onClick={logout} className="text-sm text-on-background/50 hover:text-on-background underline">
+              Cerrar sesión
+            </button>
+          </div>
         </div>
 
         {loading && <p className="text-on-background/60">Cargando tus citas...</p>}

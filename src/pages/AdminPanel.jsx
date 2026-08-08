@@ -6,6 +6,9 @@ import {
   query, where, updateDoc
 } from 'firebase/firestore';
 import WeekAvailability from '../components/WeekAvailability';
+import EnableNotificationsButton from '../components/EnableNotificationsButton';
+import useNewBookingAlert from '../hooks/useNewBookingAlert';
+import useAppointmentReminder from '../hooks/useAppointmentReminder';
 
 
 // El acceso a este panel ahora se controla con Firebase Auth (ver RequireAdmin.jsx),
@@ -120,6 +123,22 @@ export default function AdminPanel() {
 
   }, [authed]);
 
+  // Notificacion + sonido en tiempo real cuando llega una reserva nueva.
+  useNewBookingAlert(authed, () => {
+    fetchReservasPendientes();
+    fetchBloqueos();
+  });
+
+  // Recordatorio 30 minutos antes de cada cita confirmada (mientras el panel este abierto).
+  useAppointmentReminder(
+    reservasConfirmadas.filter(r => r.date >= today),
+    (appt) => ({
+      title: 'Cita en 30 minutos',
+      body: `${appt.fullName || 'Cliente'} - ${appt.time || ''} - ${(appt.services || []).join(', ')}`,
+    }),
+    authed
+  );
+
 
 
 
@@ -171,137 +190,187 @@ export default function AdminPanel() {
 
   const handleGuardar = async () => {
 
-    if (!selectedDate) return;
+    if (!selectedDate) return;
 
-    setSaving(true);
+    setSaving(true);
 
-    try {
+    try {
 
-      if (!allDay && horasBloquedas.length === 0) {
+      // Preservamos las horas ya reservadas (citas confirmadas) al guardar
+      // un bloqueo manual: son cosas independientes.
+      const horasReservadasExistentes = bloqueos[selectedDate]?.horasReservadas || [];
 
-        await deleteDoc(doc(db, 'bloqueos', selectedDate));
+      if (!allDay && horasBloquedas.length === 0) {
 
-        setFeedback('Bloqueo eliminado.');
+        if (horasReservadasExistentes.length > 0) {
 
-      } else {
+          await setDoc(doc(db, 'bloqueos', selectedDate), {
 
-        await setDoc(doc(db, 'bloqueos', selectedDate), {
+            allDay: false,
 
-          allDay,
+            horasBloquedas: [],
 
-          horasBloquedas: allDay ? [] : horasBloquedas,
+            horasReservadas: horasReservadasExistentes,
 
-          reason: reason.trim(),
+            reason: '',
 
-        });
+          });
 
-        setFeedback('✔ Bloqueo guardado.');
+        } else {
 
-      }
+          await deleteDoc(doc(db, 'bloqueos', selectedDate));
 
-      await fetchBloqueos();
+        }
 
-    } catch (err) {
+        setFeedback('Bloqueo eliminado.');
 
-      setFeedback('Error al guardar. Revisa Firebase.');
+      } else {
 
-      console.error(err);
+        await setDoc(doc(db, 'bloqueos', selectedDate), {
 
-    }
+          allDay,
 
-    setSaving(false);
+          horasBloquedas: allDay ? [] : horasBloquedas,
 
-    setTimeout(() => setFeedback(''), 3000);
+          horasReservadas: horasReservadasExistentes,
 
-  };
+          reason: reason.trim(),
+
+        });
+
+        setFeedback('✔ Bloqueo guardado.');
+
+      }
+
+      await fetchBloqueos();
+
+    } catch (err) {
+
+      setFeedback('Error al guardar. Revisa Firebase.');
+
+      console.error(err);
+
+    }
+
+    setSaving(false);
+
+    setTimeout(() => setFeedback(''), 3000);
+
+  };
 
 
 
 
   const handleEliminar = async (fecha) => {
 
-    await deleteDoc(doc(db, 'bloqueos', fecha));
+    // Si ese día tiene citas reservadas, no borramos el documento entero:
+    // solo quitamos el bloqueo manual y dejamos las horas reservadas intactas.
+    const horasReservadasExistentes = bloqueos[fecha]?.horasReservadas || [];
 
-    await fetchBloqueos();
+    if (horasReservadasExistentes.length > 0) {
 
-    if (selectedDate === fecha) {
+      await setDoc(doc(db, 'bloqueos', fecha), {
 
-      setAllDay(false);
+        allDay: false,
 
-      setHorasBloquedas([]);
+        horasBloquedas: [],
 
-      setReason('');
+        horasReservadas: horasReservadasExistentes,
 
-    }
+        reason: '',
 
-    setConfirmDialog(null);
+      });
 
-  };
+    } else {
+
+      await deleteDoc(doc(db, 'bloqueos', fecha));
+
+    }
+
+    await fetchBloqueos();
+
+    if (selectedDate === fecha) {
+
+      setAllDay(false);
+
+      setHorasBloquedas([]);
+
+      setReason('');
+
+    }
+
+    setConfirmDialog(null);
+
+  };
 
 
 
 
   const handleConfirmarPago = async (reserva) => {
 
-    setConfirmando(reserva.id);
+    setConfirmando(reserva.id);
 
-    try {
+    try {
 
-      const bloqueoRef = doc(db, 'bloqueos', reserva.date);
+      const bloqueoRef = doc(db, 'bloqueos', reserva.date);
 
-      const bloqueoSnap = await getDoc(bloqueoRef);
+      const bloqueoSnap = await getDoc(bloqueoRef);
 
-      const existente = bloqueoSnap.exists()
+      const existente = bloqueoSnap.exists()
 
-        ? bloqueoSnap.data()
+        ? bloqueoSnap.data()
 
-        : { allDay: false, horasBloquedas: [], reason: '' };
-
-
-
-
-      if (!existente.allDay && reserva.hour !== null && reserva.hour !== undefined) {
-
-        const nuevasHoras = [...new Set([...(existente.horasBloquedas || []), reserva.hour])];
-
-        await setDoc(bloqueoRef, {
-
-          allDay: false,
-
-          horasBloquedas: nuevasHoras,
-
-          reason: existente.reason || '',
-
-        });
-
-      }
+        : { allDay: false, horasBloquedas: [], horasReservadas: [], reason: '' };
 
 
 
 
-      await updateDoc(doc(db, 'reservas', reserva.id), { status: 'confirmada' });
+      // Al confirmar el pago, la hora queda RESERVADA (horasReservadas).
+      // Esto es distinto de horasBloquedas, que son los cierres manuales del admin.
+      if (!existente.allDay && reserva.hour !== null && reserva.hour !== undefined) {
 
-      await fetchBloqueos();
+        const nuevasReservadas = [...new Set([...(existente.horasReservadas || []), reserva.hour])];
 
-      await fetchReservasPendientes();
+        await setDoc(bloqueoRef, {
 
-      await fetchReservasConfirmadas();
+          allDay: existente.allDay || false,
 
-      setJustConfirmed(reserva.id);
+          horasBloquedas: existente.horasBloquedas || [],
 
-      setTimeout(() => setJustConfirmed(null), 2000);
+          horasReservadas: nuevasReservadas,
 
-    } catch (err) {
+          reason: existente.reason || '',
 
-      console.error('Error confirmando pago:', err);
+        });
 
-      alert('Error al confirmar. Revisa la consola.');
+      }
 
-    }
 
-    setConfirmando(null);
 
-  };
+
+      await updateDoc(doc(db, 'reservas', reserva.id), { status: 'confirmada', reminderSent: false });
+
+      await fetchBloqueos();
+
+      await fetchReservasPendientes();
+
+      await fetchReservasConfirmadas();
+
+      setJustConfirmed(reserva.id);
+
+      setTimeout(() => setJustConfirmed(null), 2000);
+
+    } catch (err) {
+
+      console.error('Error confirmando pago:', err);
+
+      alert('Error al confirmar. Revisa la consola.');
+
+    }
+
+    setConfirmando(null);
+
+  };
 
 
 
@@ -446,20 +515,17 @@ export default function AdminPanel() {
   // ── PANEL ──
 
   const bloqueosSorted = Object.entries(bloqueos)
-
-    .filter(([fecha]) => fecha >= today)
-
-    .filter(([fecha, data]) =>
-
-      searchBloqueo === '' ||
-
-      fecha.includes(searchBloqueo) ||
-
-      data.reason?.toLowerCase().includes(searchBloqueo.toLowerCase())
-
-    )
-
-    .sort(([a], [b]) => a.localeCompare(b));
+    // Solo mostramos en "bloqueos activos" los que el admin cerro a mano
+    // (allDay o con horas en horasBloquedas). Las horas en horasReservadas
+    // son citas confirmadas, no bloqueos manuales.
+    .filter(([fecha]) => fecha >= today)
+    .filter(([, data]) => data.allDay || (data.horasBloquedas && data.horasBloquedas.length > 0))
+    .filter(([fecha, data]) =>
+      searchBloqueo === '' ||
+      fecha.includes(searchBloqueo) ||
+      data.reason?.toLowerCase().includes(searchBloqueo.toLowerCase())
+    )
+    .sort(([a], [b]) => a.localeCompare(b));
 
 
 
@@ -510,19 +576,16 @@ export default function AdminPanel() {
 
           </div>
 
-          <button
-
-            onClick={() => setAuthed(false)}
-
-            className="font-nav-label text-[10px] uppercase tracking-widest text-on-background/30 hover:text-primary transition-colors"
-
-          >
-
-            SALIR
-
-          </button>
-
-        </div>
+          <div className="flex items-center gap-3">
+            <EnableNotificationsButton />
+            <button
+              onClick={() => setAuthed(false)}
+              className="font-nav-label text-[10px] uppercase tracking-widest text-on-background/30 hover:text-primary transition-colors"
+            >
+              SALIR
+            </button>
+          </div>
+        </div>
 
 
 

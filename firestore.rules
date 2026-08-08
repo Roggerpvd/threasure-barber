@@ -12,15 +12,12 @@ function isSignedIn() {
   return request.auth != null;
 }
 
-// El admin solo cuenta como tal si inició sesión con correo/contraseña
-// (no con Google), aunque use el mismo correo que un cliente.
+// El admin solo cuenta como tal si su sesión trae el claim "admin: true".
+// Ese claim lo pone /api/admin-login.js al generar el custom token, solo
+// después de validar el usuario y contraseña guardados en Firestore
+// (colección "admins"). Un cliente que entra con Google nunca lo tiene.
 function isAdmin() {
-  return isSignedIn() &&
-    request.auth.token.firebase.sign_in_provider == 'password' &&
-    request.auth.token.email in [
-      'roggerpvdz@gmail.com'
-      // 'otroadmin@gmail.com',
-    ];
+  return isSignedIn() && request.auth.token.admin == true;
 }
 
 service cloud.firestore {

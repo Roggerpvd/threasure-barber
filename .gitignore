@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Variables de entorno con datos sensibles (llaves privadas, etc.)
+.env
+.env.local
+.env*.local
+
+# Clave de cuenta de servicio de Firebase (NUNCA subir a git)
+service-account.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,4 +30,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-*.rar

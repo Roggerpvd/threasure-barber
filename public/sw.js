@@ -63,3 +63,42 @@ self.addEventListener('fetch', e => {
       .catch(() => caches.match(e.request))
   );
 });
+
+// ── PUSH NOTIFICATIONS ──
+// Recibe el push que manda nuestro backend (Vercel) y muestra la
+// notificación del sistema (con su sonido nativo) aunque el navegador
+// esté cerrado o la pestaña no esté abierta.
+self.addEventListener('push', e => {
+  let data = {};
+  try {
+    data = e.data ? e.data.json() : {};
+  } catch {
+    data = { title: 'Threasure Barber', body: e.data ? e.data.text() : '' };
+  }
+
+  const title = data.title || 'Threasure Barber';
+  const options = {
+    body: data.body || '',
+    icon: '/web-app-manifest-192x192.png',
+    badge: '/favicon-96x96.png',
+    tag: data.tag || undefined,
+    data: { url: data.url || '/' },
+    requireInteraction: !!data.requireInteraction,
+  };
+
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Al hacer clic en la notificación, enfoca o abre la pestaña correspondiente.
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const targetUrl = (e.notification.data && e.notification.data.url) || '/';
+
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientsArr => {
+      const existing = clientsArr.find(c => c.url.includes(targetUrl));
+      if (existing) return existing.focus();
+      return self.clients.openWindow(targetUrl);
+    })
+  );
+});

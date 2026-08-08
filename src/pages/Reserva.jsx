@@ -126,6 +126,7 @@ export default function Reserva() {
       adelanto,
       resto,
       status: 'pendiente',
+      adminNotified: false,
       createdAt: serverTimestamp(),
     });
   } catch (err) {
